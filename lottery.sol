@@ -1,24 +1,48 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity >0.6.0 <0.8.11;
+pragma solidity ^0.8.11;
 
-contract decentralized_Lottery {
+import "@chainlink/contracts/src/v0.8/VRFConsumerBase.sol";
+
+contract Lottery is VRFConsumerBase {
     address public owner;
     address payable[] public players;
-    uint public lottery_Id;
+    uint public lotteryId;
     uint public age;
-    mapping (uint => address payable) public lottery_History;
+    mapping (uint => address payable) public lotteryHistory;
 
-    constructor() {
-        owner = msg.sender;
-        lottery_Id = 1;
-    }
+    bytes32 internal keyHash;
+    uint internal fee;       
+    uint public randomResult;
+
+    constructor()
+        VRFConsumerBase(
+            0xb3dCcb4Cf7a26f6cf6B120Cf5A73875B7BBc655B, 
+            0x01BE23585060835E02B77ef475b0Cc51aA1e0709  
+        ) {
+            keyHash = 0x2ed0feb3e7fd2022120aa84fab1945545a9f2ffc9076fd6156fa96eaff4c1311;
+            fee = 0.1 * 10 ** 18;
+
+            owner = msg.sender;
+            lotteryId = 1;
+        }
+    
     function age_input(uint user_age) public {
         age = user_age;
+    }    
+
+    function getRandomNumber() public returns (bytes32 requestId) {
+        require(LINK.balanceOf(address(this)) >= fee, "Not enough LINK in contract");
+        return requestRandomness(keyHash, fee);
+    }
+
+    function fulfillRandomness(bytes32 requestId, uint randomness) internal override {
+        randomResult = randomness;
+        payWinner();
     }
 
     function getWinnerByLottery(uint lottery) public view returns (address payable) {
-        return lottery_History[lottery];
+        return lotteryHistory[lottery];
     }
 
     function getBalance() public view returns (uint) {
@@ -30,22 +54,23 @@ contract decentralized_Lottery {
     }
 
     function enter() public payable {
-        require(age >= 18);
-        require(msg.value > 0.09 ether);
+         require(age >= 18);
+        require(msg.value > .01 ether);
+
 
         players.push(payable(msg.sender));
     }
 
-    function getRandomNumber() public view returns (uint) {
-        return uint(keccak256(abi.encodePacked(owner, block.timestamp)));
+    function pickWinner() public onlyowner {
+        getRandomNumber();
     }
 
-    function pickWinner() public onlyowner {
-        uint index = getRandomNumber() % players.length;
+    function payWinner() public {
+        uint index = randomResult % players.length;
         players[index].transfer(address(this).balance);
 
-        lottery_History[lottery_Id] = players[index];
-        lottery_Id++;
+        lotteryHistory[lotteryId] = players[index];
+        lotteryId++;
         
         players = new address payable[](0);
     }
